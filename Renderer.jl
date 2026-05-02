@@ -1,6 +1,6 @@
 module Renderer
 
-export update!, start!, Vector2, Vector2Int, FRAMERATE
+export update!, start!, Vector2, Vector2Int, FRAMERATE, project
 
 
 using GLMakie
@@ -16,9 +16,46 @@ struct Vector2
 end
 
 const FRAMERATE = 160
+const FARPLANE = 1000
+const NEARPLANE = 0.1
+const FOV = 60
+const RED = RGBf(1, 0, 0)
+const GREEN = RGBf(0, 1, 0)
+const BLUE = RGBf(0, 0, 1)
+
+function project(p::Matrix, f, n, fov)
+    f1 = -f/(f-n)
+    S = 1/tan((fov/2) * (π/180))
+    transform = [
+        S 0 0    0
+        0 S 0    0
+        0 0 f1   -1
+        0 0 f1*n 0
+    ]
+    viewport = [
+        0   0   0 0
+        0   0   0 0
+        0   0   0 0
+        0 -10 -20 0
+    ]
+
+    [p 1] * viewport * transform
+end
 
 function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the window is open
     println("Started v1...")
+
+    verts = [
+        [-16, -16, 16],
+        [16, -16, 16],
+        [-16, 16, 16],
+        [16, 16, 16],
+        [-16, -16, 64],
+        [16, -16, 64],
+        [-16, 16, 64],
+        [16, 16, 64]
+    ]
+
     speed = 32
     x = dims.x/2
     y = dims.y/2
@@ -49,8 +86,13 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
         rx = round(Int, x)
         ry = round(Int, y)
 
-        drawline!(RGBf(0, 1, 0), Vector2Int(1, 1), Vector2Int(rx, ry), buf)
-        buf[rx, ry] = RGBf(1, 0, 0)
+        # drawline!(RGBf(0, 1, 0), Vector2Int(1, 1), Vector2Int(rx, ry), buf)
+        foreach(verts) do v
+            vp = project([v[1] v[2] v[3]], FARPLANE, NEARPLANE, FOV)
+            buf[round(Int, vp[1] + dims.x/2), round(Int, vp[2] + dims.y/2)] = GREEN
+        end
+
+        buf[rx, ry] = RED
 
         _buf[] = buf
         notify(_buf)
