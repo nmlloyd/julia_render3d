@@ -1,9 +1,9 @@
 module RendererInterface
+export run
 
 using GLMakie, DataStructures, Revise
 
 push!(LOAD_PATH, ".")
-
 using Renderer
 
 GLMakie.activate!()
