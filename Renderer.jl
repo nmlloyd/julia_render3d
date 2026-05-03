@@ -5,6 +5,10 @@ export update!, start!, Vector2, Vector2Int, FRAMERATE, project
 
 using GLMakie
 using DataStructures
+using LinearAlgebra
+using FileIO
+using MeshIO
+using GeometryBasics
 
 mutable struct Vector2Int
     x::Int
@@ -26,7 +30,7 @@ mutable struct Camera
     dims::Vector2Int
 end
 
-const FRAMERATE = 160
+const FRAMERATE = 60
 const NEARPLANE = 1
 const FOV = 60
 const RED = RGBf(1, 0, 0)
@@ -65,23 +69,30 @@ function project(p::Vector, camera::Camera)#eye::Vector, θe::Vector, dims::Vect
     #The relative position of the point-to-project to the camera / eye
     d = rela * relb * relc * (p - eye)
 
-    [
-        (d[1] * s[1])/(d[3] * r[1]) * n + dims.x/2,
-        (d[2] * s[2])/(d[3] * r[2]) * n + dims.y/2
-    ]
+    if d[3] > n
+        [
+            (d[1] * s[1])/(d[3] * r[1]) * n + dims.x/2,
+            (d[2] * s[2])/(d[3] * r[2]) * n + dims.y/2
+        ]
+    else
+        return nothing
+    end
 end
 
 function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the window is open
     println("Started v1...")
 
-    r_speed = 120    #Angular speed
-    speed = 100      #Linear speed
-    ϕ = 0           #Rotation across the X axis
-    θ = 0           #Rotation across the Y axis
+    GLMakie.GLFW.SetInputMode(GLMakie.GLFW.GetCurrentContext(), GLMakie.GLFW.CURSOR, GLMakie.GLFW.CURSOR_HIDDEN)
+
+    r_speed = 12    #Angular speed
+    speed = 100     #Linear speed
+    ϕ = 0           #Rotation across the X axis (elevation)
+    θ = 0           #Rotation across the Y axis (azimuth)
     eye = [0, 0, 0] #Camera / eye position (x, y, z)
     buf = _buf[]
 
-    edges = cube([0, 0, 32], 32)
+    cube_pos = [0, 0, 32]
+    edges = cube(cube_pos, 32)
 
     _mouse = mouseposition_px(fig.scene)
 
@@ -97,35 +108,38 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
         Δtθ = r_speed / FRAMERATE
         Δt = speed / FRAMERATE
 
-        if ispressed(fig.scene, Keyboard.left)
-            θ -= Δtθ
-        end
-        if ispressed(fig.scene, Keyboard.right)
-            θ += Δtθ
-        end
-        if ispressed(fig.scene, Keyboard.down)
-            ϕ += Δtθ
-        end
-        if ispressed(fig.scene, Keyboard.up)
-            ϕ -= Δtθ
-        end
+        θ -= (Δmouse * Δtθ)[1]
+        ϕ = clamp(ϕ + (Δmouse * Δtθ)[2], -89, 89)
+
+        # if ispressed(fig.scene, Keyboard.left)
+        #     θ -= Δtθ
+        # end
+        # if ispressed(fig.scene, Keyboard.right)
+        #     θ += Δtθ
+        # end
+        # if ispressed(fig.scene, Keyboard.down)
+        #     ϕ += Δtθ
+        # end
+        # if ispressed(fig.scene, Keyboard.up)
+        #     ϕ -= Δtθ
+        # end
 
         fwd = [
             cos(ϕ * (π/180))*sin(θ * (π/180)),
             sin(-ϕ * (π/180)), 
             cos(ϕ * (π/180))*cos(θ * (π/180))
         ]
-        up = [
+        up = normalize([
             0,
             fwd[3],
             -fwd[2]
-        ]
+        ])
         wup = [0, 1, 0]
-        right = [
+        right = normalize([
             fwd[3],
             0,
             -fwd[1]
-        ]
+        ])
 
         if ispressed(fig.scene, Keyboard.a)
             eye -= Δt * right
@@ -157,7 +171,8 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
         # end
 
         # drawcube!(GREEN, cam, [0, 0, 64], 32, buf)
-        drawcube!(GREEN, edges, cam, buf)
+        # drawcube!(GREEN, edges, cam, buf)
+        drawobj!(GREEN, "cube.obj", [0, 0, 16], cam, buf)
 
         buf[round(Int, dims.x/2), round(Int, dims.y/2)] = RED
 
@@ -183,7 +198,41 @@ end
 function drawcube!(color::RGBf, edges::Vector{Edge}, camera, buf)
     foreach(edges) do edge
         # drawpoint2d!(color, project(edge.a, camera), camera.dims, buf)
-        drawline2d!(color, project(edge.a, camera), project(edge.b, camera), camera.dims, buf)
+        # if dot(normalize(cube_pos - camera.position), normalize(edge.a - cube_pos)) >= 0
+        #     return
+        # end
+        # if dot(normalize(cube_pos - camera.position), normalize(edge.b - cube_pos)) >= 0
+        #     return
+        # end
+
+        ap = project(edge.a, camera)
+        bp = project(edge.b, camera)
+        if !isnothing(ap) && !isnothing(bp)
+            drawline2d!(color, ap, bp, camera.dims, buf)
+        end
+    end
+end
+function drawobj!(color::RGBf, fname::String, position::Vector, camera::Camera, buf)
+    obj = load(fname)
+    foreach(obj) do tri 
+        v1 = Vector(tri[1] + position)
+        v2 = Vector(tri[2] + position)
+        v3 = Vector(tri[3] + position)
+        ap = project(v1, camera)
+        bp = project(v2, camera)
+        cp = project(v3, camera)
+
+        if isnothing(ap) || isnothing(bp) || isnothing(cp)
+            return
+        end
+
+        if dot(cross(v2 - v1, v3 - v1), camera.position - v1) < 0
+            return
+        end
+
+        drawline2d!(color, ap, bp, camera.dims, buf)
+        drawline2d!(color, bp, cp, camera.dims, buf)
+        drawline2d!(color, cp, ap, camera.dims, buf)
     end
 end
 function bressenham(a::Vector, b::Vector)
@@ -285,7 +334,7 @@ function cube(pos::Vector, scale)
         Edge(b, f),
         Edge(c, g),
         Edge(d, h)
-    ]
+        ]
 end
 # function start!(fig::Figure, dims::Vector2Int, buf)    #Called when figure is first displayed
 #     # buf[][x, y] = RGBf(x/dims.x, y/dims.y, 0.5)
