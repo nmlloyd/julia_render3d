@@ -92,7 +92,7 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
     buf = _buf[]
 
     cube_pos = [0, 0, 32]
-    edges = cube(cube_pos, 32)
+    monkey = load("monkey.obj")
 
     _mouse = mouseposition_px(fig.scene)
 
@@ -172,9 +172,9 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
 
         # drawcube!(GREEN, cam, [0, 0, 64], 32, buf)
         # drawcube!(GREEN, edges, cam, buf)
-        drawobj!(GREEN, "cube.obj", [0, 0, 16], cam, buf)
+        drawobj!(GREEN, monkey, [0, 0, 64], 16, cam, buf)
 
-        buf[round(Int, dims.x/2), round(Int, dims.y/2)] = RED
+        buf[round(Int, dims.x/2), round(Int, dims.y/2)] = RGBf(1, 1, 1)
 
         _mouse = mouseposition_px(fig.scene)
 
@@ -212,12 +212,11 @@ function drawcube!(color::RGBf, edges::Vector{Edge}, camera, buf)
         end
     end
 end
-function drawobj!(color::RGBf, fname::String, position::Vector, camera::Camera, buf)
-    obj = load(fname)
+function drawobj!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf)
     foreach(obj) do tri 
-        v1 = Vector(tri[1] + position)
-        v2 = Vector(tri[2] + position)
-        v3 = Vector(tri[3] + position)
+        v1 = Vector(tri[1]) * scale + position
+        v2 = Vector(tri[2]) * scale + position
+        v3 = Vector(tri[3]) * scale + position
         ap = project(v1, camera)
         bp = project(v2, camera)
         cp = project(v3, camera)
