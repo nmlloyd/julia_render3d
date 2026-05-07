@@ -38,6 +38,9 @@ const FOV = 60
 const RED = RGBf(1, 0, 0)
 const GREEN = RGBf(0, 1, 0)
 const BLUE = RGBf(0, 0, 1)
+const VUP = [0, 1, 0]
+const VRIGHT = [1, 0, 0]
+const VFORWARD = [0, 0, 1]
 
 function project(p::Vector, camera::Camera)#eye::Vector, θe::Vector, dims::Vector2Int, n, fov)
     eye = camera.position
@@ -92,6 +95,18 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
     θ = 0           #Rotation across the Y axis (azimuth)
     eye = [0, 0, 0] #Camera / eye position (x, y, z)
     buf = _buf[]
+
+    chunk = [
+        [-1, 0, 1],
+        [0, 0, 1],
+        [1, 0, 1],
+        [-1, 1, 1],
+        [0, 1, 1],
+        [1, 1, 1],
+        [-1, -1, 1],
+        [0, -1, 1],
+        [1, -1, 1]
+    ] 
 
     obj = decompose(Triangle, load("cube.obj").mesh)
 
@@ -174,7 +189,8 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
         # drawcube!(GREEN, cam, [0, 0, 64], 32, buf)
         # drawcube!(GREEN, edges, cam, buf)
         # drawobj!(GREEN, monkey, [0, 0, 32], 1, cam, buf)
-        drawface!(GREEN, obj, Back, [0, 0, 32], 1, cam, buf)
+        drawchunk!(GREEN, obj, chunk, 32, cam, buf)
+        
 
         buf[round(Int, dims.x/2), round(Int, dims.y/2)] = RGBf(1, 1, 1)
 
@@ -197,34 +213,60 @@ function drawpoint2d!(color::RGBf, vp::Vector, dims::Vector2Int, buf)
         buf[round(Int, vp[1]), round(Int, vp[2])] = color
     end
 end
-function drawcube!(color::RGBf, edges::Vector{Edge}, camera, buf)
-    foreach(edges) do edge
-        # drawpoint2d!(color, project(edge.a, camera), camera.dims, buf)
-        # if dot(normalize(cube_pos - camera.position), normalize(edge.a - cube_pos)) >= 0
-        #     return
-        # end
-        # if dot(normalize(cube_pos - camera.position), normalize(edge.b - cube_pos)) >= 0
-        #     return
-        # end
+function drawchunk!(color::RGBf, obj, chunk, scale, camera::Camera, buf)
+    foreach(chunk) do pos
+        upper = true
+        lower = true
+        right = true
+        left = true
+        front = true
+        back = true
 
-        ap = project(edge.a, camera)
-        bp = project(edge.b, camera)
-        if !isnothing(ap) && !isnothing(bp)
-            drawline2d!(color, ap, bp, camera.dims, buf)
+        if in(pos + VUP, chunk)        #Don't draw upper face
+            upper = false
+        end
+        if in(pos - VUP, chunk)        #Don't draw lower face
+            lower = false
+        end
+        if in(pos + VRIGHT, chunk)     #Don't draw right face
+            right = false
+        end
+        if in(pos - VRIGHT, chunk)     #Don't draw left face
+            left = false
+        end
+        if in(pos + VFORWARD, chunk)   #Don't draw back face
+            back = false
+        end
+        if in(pos - VFORWARD, chunk)   #Don't draw front face
+            front = false
+        end
+
+        if upper
+            drawface!(color, obj, Up, pos * scale, 1, camera, buf)
+        end
+        if left
+            drawface!(color, obj, Left, pos * scale, 1, camera, buf)
+        end
+        if right
+            drawface!(color, obj, Right, pos * scale, 1, camera, buf)
+        end
+        if front
+            drawface!(color, obj, Front, pos * scale, 1, camera, buf)
+        end
+        if back
+            drawface!(color, obj, Back, pos * scale, 1, camera, buf)
+        end
+        if lower
+            drawface!(color, obj, Down, pos * scale, 1, camera, buf)
         end
     end
 end
 function drawobj!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf)
-    i = 0
-    pos = zeros(Float64, 3)
-    foreach(obj.mesh) do tri 
-        if i % 2 == 0
-            pos += position
-        end
+    foreach(obj) do tri 
 
-        v1 = Vector(tri[1]) * scale + pos
-        v2 = Vector(tri[2]) * scale + pos
-        v3 = Vector(tri[3]) * scale + pos
+        v1 = Vector(tri[1]) * scale + position
+        v2 = Vector(tri[2]) * scale + position
+        v3 = Vector(tri[3]) * scale + position
 
         ap = project(v1, camera)
         bp = project(v2, camera)
@@ -241,8 +283,6 @@ function drawobj!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf
         drawline2d!(color, ap, bp, camera.dims, buf)
         drawline2d!(color, bp, cp, camera.dims, buf)
         drawline2d!(color, cp, ap, camera.dims, buf)
-
-        i += 1
     end
 end
 function drawobjtest!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf)
@@ -272,17 +312,17 @@ function drawobjtest!(color::RGBf, obj, position::Vector, scale, camera::Camera,
 end
 function drawface!(color::RGBf, obj, face::PrimitiveFaceOrientation, position::Vector, scale::Number, camera::Camera, buf)
     if     face == Up
-        drawobjtest!(color, obj[1:2], position, scale, camera, buf)
+        drawobj!(color, obj[1:2], position, scale, camera, buf)
     elseif face == Back
-        drawobjtest!(color, obj[3:4], position, scale, camera, buf)
+        drawobj!(color, obj[3:4], position, scale, camera, buf)
     elseif face == Left  
-        drawobjtest!(color, obj[5:6], position, scale, camera, buf)
+        drawobj!(color, obj[5:6], position, scale, camera, buf)
     elseif face == Down
-        drawobjtest!(color, obj[7:8], position, scale, camera, buf)
+        drawobj!(color, obj[7:8], position, scale, camera, buf)
     elseif face == Right
-        drawobjtest!(color, obj[9:10], position, scale, camera, buf)
+        drawobj!(color, obj[9:10], position, scale, camera, buf)
     elseif face == Front
-        drawobjtest!(color, obj[11:12], position, scale, camera, buf)
+        drawobj!(color, obj[11:12], position, scale, camera, buf)
     end
 end
 function bressenham(a::Vector, b::Vector)
