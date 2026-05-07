@@ -9,6 +9,7 @@ using LinearAlgebra
 using FileIO
 using MeshIO
 using GeometryBasics
+using MLStyle
 
 mutable struct Vector2Int
     x::Int
@@ -29,6 +30,7 @@ mutable struct Camera
     fov
     dims::Vector2Int
 end
+@enum PrimitiveFaceOrientation Up Back Left Down Right Front
 
 const FRAMERATE = 60
 const NEARPLANE = 1
@@ -91,8 +93,7 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
     eye = [0, 0, 0] #Camera / eye position (x, y, z)
     buf = _buf[]
 
-    cube_pos = [0, 0, 32]
-    monkey = load("monkey.obj")
+    obj = decompose(Triangle, load("cube.obj").mesh)
 
     _mouse = mouseposition_px(fig.scene)
 
@@ -172,7 +173,8 @@ function loop!(fig::Figure, dims::Vector2Int, _buf)   #Called every frame the wi
 
         # drawcube!(GREEN, cam, [0, 0, 64], 32, buf)
         # drawcube!(GREEN, edges, cam, buf)
-        drawobj!(GREEN, monkey, [0, 0, 64], 16, cam, buf)
+        # drawobj!(GREEN, monkey, [0, 0, 32], 1, cam, buf)
+        drawface!(GREEN, obj, Back, [0, 0, 32], 1, cam, buf)
 
         buf[round(Int, dims.x/2), round(Int, dims.y/2)] = RGBf(1, 1, 1)
 
@@ -213,10 +215,17 @@ function drawcube!(color::RGBf, edges::Vector{Edge}, camera, buf)
     end
 end
 function drawobj!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf)
-    foreach(obj) do tri 
-        v1 = Vector(tri[1]) * scale + position
-        v2 = Vector(tri[2]) * scale + position
-        v3 = Vector(tri[3]) * scale + position
+    i = 0
+    pos = zeros(Float64, 3)
+    foreach(obj.mesh) do tri 
+        if i % 2 == 0
+            pos += position
+        end
+
+        v1 = Vector(tri[1]) * scale + pos
+        v2 = Vector(tri[2]) * scale + pos
+        v3 = Vector(tri[3]) * scale + pos
+
         ap = project(v1, camera)
         bp = project(v2, camera)
         cp = project(v3, camera)
@@ -232,6 +241,48 @@ function drawobj!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf
         drawline2d!(color, ap, bp, camera.dims, buf)
         drawline2d!(color, bp, cp, camera.dims, buf)
         drawline2d!(color, cp, ap, camera.dims, buf)
+
+        i += 1
+    end
+end
+function drawobjtest!(color::RGBf, obj, position::Vector, scale, camera::Camera, buf)
+    foreach(obj) do tri 
+        _color = color
+
+        v1 = Vector(tri[1]) * scale + position
+        v2 = Vector(tri[2]) * scale + position
+        v3 = Vector(tri[3]) * scale + position
+
+        ap = project(v1, camera)
+        bp = project(v2, camera)
+        cp = project(v3, camera)
+
+        if isnothing(ap) || isnothing(bp) || isnothing(cp)
+            return
+        end
+
+        if dot(cross(v2 - v1, v3 - v1), camera.position - v1) < 0
+            _color = RGBf(1, 1, 1)
+        end
+
+        drawline2d!(_color, ap, bp, camera.dims, buf)
+        drawline2d!(_color, bp, cp, camera.dims, buf)
+        drawline2d!(_color, cp, ap, camera.dims, buf)
+    end
+end
+function drawface!(color::RGBf, obj, face::PrimitiveFaceOrientation, position::Vector, scale::Number, camera::Camera, buf)
+    if     face == Up
+        drawobjtest!(color, obj[1:2], position, scale, camera, buf)
+    elseif face == Back
+        drawobjtest!(color, obj[3:4], position, scale, camera, buf)
+    elseif face == Left  
+        drawobjtest!(color, obj[5:6], position, scale, camera, buf)
+    elseif face == Down
+        drawobjtest!(color, obj[7:8], position, scale, camera, buf)
+    elseif face == Right
+        drawobjtest!(color, obj[9:10], position, scale, camera, buf)
+    elseif face == Front
+        drawobjtest!(color, obj[11:12], position, scale, camera, buf)
     end
 end
 function bressenham(a::Vector, b::Vector)
